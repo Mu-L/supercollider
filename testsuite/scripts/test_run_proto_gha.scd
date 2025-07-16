@@ -34,40 +34,16 @@
 		'skipReason': "UnitTest fails when run in GHA (FIXME)",
 	),
 	(
-		'suite': "TestEnvGen_server",
-		'test': "test_zero_gate_n_off_not_sent",
-		'skip': "true",
-		'skipReason': "UnitTest has bugs (FIXME)",
-	),
-	(
-		'suite': "TestEnvGen_server",
-		'test': "test_trig_gate_nonsustain_env",
-		'skip': "true",
-		'skipReason': "UnitTest fails on supernova in GHA on Linux (FIXME)",
-	),
-	(
 		'suite': "TestLinkClock",
 		'test': "*",
 		'skip': "true",
 		'skipReason': "UnitTest has unknown issues when run in GHA (FIXME)",
 	),
 	(
-		'suite': "TestNodeProxy",
-		'test': "test_copy_nodeMapIsCopied",
-		'skip': "true",
-		'skipReason': "UnitTest fails (FIXME)",
-	),
-	(
 		'suite': "TestNodeProxyRoles",
 		'test': "test_proxyroles_xfade_smoothly",
 		'skipReason': "UnitTest fails in GHA (FIXME)",
 		'skip': "true",
-	),
-	(
-		'suite': "TestNodeProxy_Server",
-		'test': "test_schedAfterFade_notBeforeQuant",
-		'skip': "true",
-		'skipReason': "UnitTest fails (FIXME)",
 	),
 	(
 		'suite': "TestOSCFunc",
@@ -80,18 +56,6 @@
 		'test': "test_string_unixCmd_quoteCmdAndArg",
 		'skip': if(thisProcess.platform.name == \windows, {"true"}, {"false"}),
 		'skipReason': "Windows process creation has unresolved issues (FIXME)",
-	),
-	(
-		'suite': "TestSCDoc",
-		'test': "test_helpSourceDirs_includedExtensions",
-		'skipReason': "UnitTest fails (FIXME)",
-		'skip': "true",
-	),
-	(
-		'suite': "TestTempoClock",
-		'test': "test_nextTimeOnGrid_okAfterMeterChange",
-		'skipReason': "UnitTest fails (FIXME)",
-		'skip': "true",
 	),
 	(
 		'suite': "TestThreadReschedule",
