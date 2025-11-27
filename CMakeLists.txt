@@ -342,11 +342,8 @@ SET(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 	add_compile_options(
-		-Werror=return-type      # Error out if function definitions lack a return type
 		-fno-math-errno          # Optimize math functions by not setting errno
 		-fno-signaling-nans      # Assume no signaling NaNs for better optimization
-		-fsigned-zeros           # Maintain distinction between -0.0 and +0.0
-		-fno-associative-math    # Prevent reordering of floating-point operations
 	)
 
 	if(APPLE)
@@ -357,6 +354,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+	if(NOT APPLE)
+		add_compile_options(
+			-fno-math-errno      # On Apple and most BSDs, math library functions never set errno, and so -fno-math-errno is the default
+		)
+	endif()
 	if(NOT SC_CLANG_USES_LIBSTDCPP)
 		# the default
 		add_compile_options("-stdlib=libc++")
@@ -365,6 +367,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+	add_compile_options(
+		-Werror=return-type      # Error out if function definitions lack a return type
+		-fsigned-zeros           # Maintain distinction between -0.0 and +0.0
+		-fno-associative-math    # Prevent reordering of floating-point operations
+	)
+
 	if(FORTIFY)
 		add_compile_definitions("_FORTIFY_SOURCE=2")
 	endif()
@@ -391,6 +399,8 @@ if(MSVC)
 # caused by some versions of libsndfile's C++ header redefining nullptr as NULL.
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
   add_compile_options("/Zc:__cplusplus")
+
+# for math operations, we expect the default /fp:precise flag to be used, so that we match settings for gcc/clang
 
 # _ENABLE_ATOMIC_ALIGNMENT_FIX prevents the build from breaking when VS2015 update 2 upwards are used
 # see http://boost.2283326.n4.nabble.com/lockfree-ENABLE-ATOMIC-ALIGNMENT-FIX-for-VS-2015-Update-2-td4685955.html
