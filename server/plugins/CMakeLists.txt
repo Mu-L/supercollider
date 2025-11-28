@@ -57,10 +57,6 @@ if(APPLE OR WIN32)
 	set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
 endif()
 
-if (${CMAKE_COMPILER_IS_GNUCXX})
-	add_definitions(-fno-finite-math-only)
-endif()
-
 foreach(plugin ${plugin_sources})
 	string(REPLACE .cpp "" plugin_name ${plugin} )
 	add_library(${plugin_name} MODULE ${plugin})
