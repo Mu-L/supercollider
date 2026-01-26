@@ -1882,9 +1882,7 @@ bool isSeries(PyrParseNode* node, PyrParseNode** args) {
 }
 
 void PyrCallNode::compileCall(PyrSlot* result) {
-    int index, selType;
     PyrSlot dummy;
-    bool varFound;
     PyrParseNode* argnode2;
 
     PyrParseNode* argnode = mArglist;
@@ -1895,8 +1893,9 @@ void PyrCallNode::compileCall(PyrSlot* result) {
     int numBlockArgs = METHRAW(gCompilingBlock)->numargs;
 
     slotRawSymbol(&mSelector->mSlot)->flags |= sym_Called;
-    index = conjureSelectorIndex((PyrParseNode*)mSelector, gCompilingBlock, isSuper, slotRawSymbol(&mSelector->mSlot),
-                                 &selType);
+    int selType;
+    auto selectorSlotOrSpecialIndex = conjureSelectorIndex((PyrParseNode*)mSelector, gCompilingBlock, isSuper,
+                                                           slotRawSymbol(&mSelector->mSlot), &selType);
 
     if (numKeyArgs > 0 || (numArgs > 15 && !(selType == selSwitch || selType == selCase))) {
         for (; argnode; argnode = argnode->mNext)
@@ -1906,28 +1905,43 @@ void PyrCallNode::compileCall(PyrSlot* result) {
 
         if (isSuper) {
             emitTailCall();
+            assert(selType == selNormal);
             SendSuperMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                               Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
+                               Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                               Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
         } else {
             switch (selType) {
             case selNormal:
+                // When the selector type is normal, conjureSelectorIndex has added the symbol to the functiondef's
+                // selector array and we just send a normal message.
                 emitTailCall();
                 SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                              Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
+                              Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                              Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 break;
-            case selSpecial:
+
+            case selUnary:
+                [[fallthrough]];
+            case selBinary: {
+                // When the selector is of the type unary or binary, no selector has been emited to the function def.
+                // This is because it is indented to be called with special bytes codes for the unary and binary message
+                // format respectively, however, these do not take kwargs. Therefore, we put the selector into the
+                // function def and use its index for a normal message send.
+                const auto selectorSlotIndex =
+                    conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
+                emitTailCall();
+                SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
+                              Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                              Operands::Index::fromRaw(selectorSlotIndex));
+                break;
+            }
+
+            default:
+                // In this case, the selector is a special one, and we can use the send special message.
                 emitTailCall();
                 SendSpecialMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                                     Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
-                break;
-            case selUnary:
-            case selBinary:
-                index = conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
-                // fall through
-            default:
-                emitTailCall();
-                SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                              Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
+                                     Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                                     Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 break;
             }
         }
@@ -1936,16 +1950,16 @@ void PyrCallNode::compileCall(PyrSlot* result) {
             // No need to compile the 'this' arg.
             gFunctionCantBeClosed = true;
             emitTailCall();
-            SendSuperMsgThisOpt.emit(Operands::Index::fromRaw(index));
+            SendSuperMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
         } else {
             for (; argnode; argnode = argnode->mNext)
                 COMPILENODE(argnode, &dummy, false);
             emitTailCall();
             if (SendSuperMsg.validNibble(numArgs)) {
-                SendSuperMsg.emit(numArgs, Operands::Index::fromRaw(index));
+                SendSuperMsg.emit(numArgs, Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             } else {
                 SendSuperMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs), Operands::KwArgumentCount::fromRaw(0),
-                                   Operands::Index::fromRaw(index));
+                                   Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
         }
 
@@ -1960,7 +1974,7 @@ void PyrCallNode::compileCall(PyrSlot* result) {
         case selNormal: {
             if (numArgs == 1 && varname == s_this) {
                 emitTailCall();
-                SendMsgThisOpt.emit(Operands::Index::fromRaw(index));
+                SendMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             } else if (numArgs > 1 && numArgs == numBlockArgs) {
                 switch (checkPushAllArgs(argnode, numArgs)) {
                 case push_Normal:
@@ -1968,13 +1982,13 @@ void PyrCallNode::compileCall(PyrSlot* result) {
 
                 case push_AllArgs: {
                     emitTailCall();
-                    PushAllArgsAndSendMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllArgsAndSendMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 case push_AllButFirstArg: {
                     COMPILENODE(argnode, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstArgAndSendMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstArgAndSendMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -1990,7 +2004,7 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                     COMPILENODE(argnode, &dummy, false);
                     COMPILENODE(argnode->mNext, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstTwoArgsAndSendMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstTwoArgsAndSendMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -2004,10 +2018,10 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                 emitTailCall();
 
                 if (SendMsg.validNibble(numArgs))
-                    SendMsg.emit(numArgs, Operands::Index::fromRaw(index));
+                    SendMsg.emit(numArgs, Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 else
                     SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs), Operands::KwArgumentCount::fromRaw(0),
-                                  Operands::Index::fromRaw(index));
+                                  Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
         } break;
 
@@ -2015,21 +2029,21 @@ void PyrCallNode::compileCall(PyrSlot* result) {
             if (numArgs == 1) {
                 if (varname == s_this) {
                     emitTailCall();
-                    SendSpecialMsgThisOpt.emit(Operands::Index::fromRaw(index));
+                    SendSpecialMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } else if (varname) {
                     if (const auto result = findVarName(gCompilingBlock, gCompilingClass, varname);
                         result && result->varType == varInst) {
                         emitTailCall();
                         PushInstVarAndSendSpecialMsg.emit(Operands::Index::fromRaw(result->index),
-                                                          Operands::Index::fromRaw(index));
+                                                          Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                     } else
                         goto special;
 
                 } else
                     goto special;
 
-            } else if (index == opmDo && isSeries(argnode, &argnode)) {
-                index = opmForSeries;
+            } else if (selectorSlotOrSpecialIndex == opmDo && isSeries(argnode, &argnode)) {
+                selectorSlotOrSpecialIndex = opmForSeries;
                 mArglist = linkNextNode(argnode, mArglist->mNext);
                 numArgs = nodeListLength(mArglist);
                 goto special;
@@ -2041,13 +2055,13 @@ void PyrCallNode::compileCall(PyrSlot* result) {
 
                 case push_AllArgs: {
                     emitTailCall();
-                    PushAllArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 case push_AllButFirstArg: {
                     COMPILENODE(argnode, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstArgAndSendSpecialMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstArgAndSendSpecialMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -2063,7 +2077,7 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                     COMPILENODE(argnode, &dummy, false);
                     COMPILENODE(argnode->mNext, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstTwoArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstTwoArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -2076,36 +2090,40 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                     COMPILENODE(argnode, &dummy, false);
                 emitTailCall();
                 if (SendSpecialMsg.validNibble(numArgs))
-                    SendSpecialMsg.emit(numArgs, Operands::SpecialSelectors::fromRaw(index));
+                    SendSpecialMsg.emit(numArgs, Operands::SpecialSelectors::fromRaw(selectorSlotOrSpecialIndex));
                 else
                     SendSpecialMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs),
-                                         Operands::KwArgumentCount::fromRaw(0), Operands::Index::fromRaw(index));
+                                         Operands::KwArgumentCount::fromRaw(0),
+                                         Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
             break;
 
         case selUnary: {
             if (numArgs != 1) {
-                index = conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
+                selectorSlotOrSpecialIndex =
+                    conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
                 goto defaultCase;
             }
             for (; argnode; argnode = argnode->mNext)
                 COMPILENODE(argnode, &dummy, false);
 
             emitTailCall();
-            SendSpecialUnaryArithMsgX.emit(Operands::UnaryMath::fromRaw(index));
+            SendSpecialUnaryArithMsgX.emit(Operands::UnaryMath::fromRaw(selectorSlotOrSpecialIndex));
         } break;
 
         case selBinary:
             if (numArgs != 2) {
-                index = conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
+                selectorSlotOrSpecialIndex =
+                    conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
                 goto defaultCase;
             }
             argnode2 = argnode->mNext;
-            if (index == static_cast<int>(OpBinaryMath::Add) && argnode2->mClassno == pn_PushLitNode
-                && IsInt(&((PyrPushLitNode*)argnode2)->mSlot) && slotRawInt(&((PyrPushLitNode*)argnode2)->mSlot) == 1) {
+            if (selectorSlotOrSpecialIndex == static_cast<int>(OpBinaryMath::Add)
+                && argnode2->mClassno == pn_PushLitNode && IsInt(&((PyrPushLitNode*)argnode2)->mSlot)
+                && slotRawInt(&((PyrPushLitNode*)argnode2)->mSlot) == 1) {
                 COMPILENODE(argnode, &dummy, false);
                 PushOneAndAddOne.emit();
-            } else if (index == opSub && argnode2->mClassno == pn_PushLitNode
+            } else if (selectorSlotOrSpecialIndex == opSub && argnode2->mClassno == pn_PushLitNode
                        && IsInt(&((PyrPushLitNode*)argnode2)->mSlot)
                        && slotRawInt(&((PyrPushLitNode*)argnode2)->mSlot) == 1) {
                 COMPILENODE(argnode, &dummy, false);
@@ -2114,10 +2132,10 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                 COMPILENODE(argnode, &dummy, false);
                 COMPILENODE(argnode->mNext, &dummy, false);
                 emitTailCall();
-                if (index < 16)
-                    SendSpecialBinaryArithMsg.emit(Operands::BinaryMathNibble::fromRaw(index));
+                if (selectorSlotOrSpecialIndex < 16)
+                    SendSpecialBinaryArithMsg.emit(Operands::BinaryMathNibble::fromRaw(selectorSlotOrSpecialIndex));
                 else
-                    SendSpecialBinaryArithMsgX.emit(Operands::BinaryMath::fromRaw(index));
+                    SendSpecialBinaryArithMsgX.emit(Operands::BinaryMath::fromRaw(selectorSlotOrSpecialIndex));
             }
             break;
 
@@ -2174,17 +2192,17 @@ void PyrCallNode::compileCall(PyrSlot* result) {
         defaultCase:
             if (numArgs == 1 && varname == s_this) {
                 emitTailCall();
-                SendMsgThisOpt.emit(Operands::Index::fromRaw(index));
+                SendMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             } else {
                 for (; argnode; argnode = argnode->mNext)
                     COMPILENODE(argnode, &dummy, false);
 
                 emitTailCall();
                 if (SendMsg.validNibble(numArgs))
-                    SendMsg.emit(numArgs, Operands::Index::fromRaw(index));
+                    SendMsg.emit(numArgs, Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 else
                     SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs), Operands::KwArgumentCount::fromRaw(0),
-                                  Operands::Index::fromRaw(index));
+                                  Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
             break;
         }
@@ -4062,13 +4080,13 @@ int conjureSelectorIndex(PyrParseNode* node, PyrBlock* func, bool isSuper, PyrSy
             return opmLoop;
         } else if (selector == gSpecialSelectors[opmQuestionMark]) {
             *selType = selQuestionMark;
-            return opmAnd; // TODO: why are we returning opmAnd (14) ? Okay the value is ignored.
+            return opmQuestionMark;
         } else if (selector == gSpecialSelectors[opmDoubleQuestionMark]) {
             *selType = selDoubleQuestionMark;
-            return opmAnd; // TODO: why are we returning opmAnd (14) ? Okay the value is ingored
+            return opmDoubleQuestionMark;
         } else if (selector == gSpecialSelectors[opmExclamationQuestionMark]) {
             *selType = selExclamationQuestionMark;
-            return opmAnd; // TODO: why are we returning opmAnd (14) ?  Okay the value is ingored
+            return opmExclamationQuestionMark;
         }
 
         for (i = 0; i < opmNumSpecialSelectors; ++i) {
