@@ -797,23 +797,43 @@ void fillClassPrototypes(PyrClassNode* node, PyrClass* classobj, PyrClass* super
         return (maybe_duplicate != names.end()) ? std::optional<PyrSymbol*> { *maybe_duplicate } : std::nullopt;
     };
 
+    const auto attemptToPrintDuplicateLocation = [&](const PyrSymbol* duplicate, int varFlagType) {
+        for (auto varlist = node->mVarlists; varlist; varlist = static_cast<PyrVarListNode*>(varlist->mNext)) {
+            if (varlist->mFlags == varFlagType) {
+                for (auto def = varlist->mVarDefs; def; def = static_cast<PyrVarDefNode*>(def->mNext)) {
+                    const auto varName = def->mVarName->mSlot;
+                    assert(varName.isSymbol());
+                    if (varName.getSymbol() == duplicate) {
+                        nodePostErrorLine(def->mVarName);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // In this case, the duplicate was in the parent class.
+        // Since that has to be fixed anyway, and the location has already been printed, let's not print it twice.
+        post("Duplicate found in superclass %s.\n", node->mSuperClassName->mSlot.getSymbol()->name);
+        nodePostErrorLine(node->mClassName);
+    };
+
     if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->instVarNames))) {
         error("Found duplicate instance variable name '%s'\n", (*duplicate)->name);
-        nodePostErrorLine((PyrParseNode*)node->mVarlists);
+        attemptToPrintDuplicateLocation(*duplicate, varInst);
         compileErrors++;
         return;
     }
 
     if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->classVarNames))) {
         error("Found duplicate class variable name '%s'\n", (*duplicate)->name);
-        nodePostErrorLine((PyrParseNode*)node->mVarlists);
+        attemptToPrintDuplicateLocation(*duplicate, varClass);
         compileErrors++;
         return;
     }
 
     if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->constNames))) {
         error("Found duplicate const variable name '%s'\n", (*duplicate)->name);
-        nodePostErrorLine((PyrParseNode*)node->mVarlists);
+        attemptToPrintDuplicateLocation(*duplicate, varConst);
         compileErrors++;
         return;
     }
