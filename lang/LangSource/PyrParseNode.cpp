@@ -105,6 +105,16 @@ const char* nodename[] = { "ClassNode", "ClassExtNode", "MethodNode", "BlockNode
 
                            "ReturnNode", "BlockReturnNode" };
 
+void emitCompilerErrorFromVersion(SemanticVersion version) {
+    if (SC_Version >= version) {
+        compileErrors++;
+    } else {
+        const auto str = version.asString();
+        post("WARNING: From version %s onwards the preceding error will be a compilation failure, please fix the code "
+             "before updating.\n\n",
+             str.c_str());
+    }
+}
 
 // Forward declare helpers.
 // This means they aren't a part of the public interface of the header.
@@ -820,22 +830,19 @@ void fillClassPrototypes(PyrClassNode* node, PyrClass* classobj, PyrClass* super
     if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->instVarNames))) {
         error("Found duplicate instance variable name '%s'\n", (*duplicate)->name);
         attemptToPrintDuplicateLocation(*duplicate, varInst);
-        compileErrors++;
-        return;
+        emitCompilerErrorFromVersion({ 3, 16, 0 });
     }
 
     if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->classVarNames))) {
         error("Found duplicate class variable name '%s'\n", (*duplicate)->name);
         attemptToPrintDuplicateLocation(*duplicate, varClass);
-        compileErrors++;
-        return;
+        emitCompilerErrorFromVersion({ 3, 16, 0 });
     }
 
     if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->constNames))) {
         error("Found duplicate const variable name '%s'\n", (*duplicate)->name);
         attemptToPrintDuplicateLocation(*duplicate, varConst);
-        compileErrors++;
-        return;
+        emitCompilerErrorFromVersion({ 3, 16, 0 });
     }
 }
 
