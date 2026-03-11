@@ -219,6 +219,7 @@ void InterfaceTable_Init() {
     ft->fSendNodeReply = &Node_SendReply;
 
     ft->fDefineUnitCmd = &UnitDef_AddCmd;
+    ft->fDefineUnitCmdEx = &UnitDef_AddCmdEx;
     ft->fDefinePlugInCmd = &PlugIn_DefineCmd;
 
     ft->fSendMsgFromRT = &SendMsgFromEngine;
@@ -237,6 +238,8 @@ void InterfaceTable_Init() {
     ft->fGroup_DeleteAll = &Group_DeleteAll;
     ft->fDoneAction = &Unit_DoneAction;
     ft->fDoAsynchronousCommand = &PerformAsynchronousCommand;
+    ft->fDoAsynchronousCommandEx = &PerformAsynchronousCommandEx;
+    ft->fDoAsyncUnitCommand = &PerformAsyncUnitCommand;
     ft->fBufAlloc = &bufAlloc;
 
     ft->fSCfftCreate = &scfft_create;
