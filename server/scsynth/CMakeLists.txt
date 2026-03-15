@@ -145,13 +145,24 @@ elseif (AUDIOAPI STREQUAL bela)
     add_definitions("-DSC_AUDIO_API=SC_AUDIO_API_BELA" "-DSC_BELA" ${XENOMAI_DEFINITIONS} ${BELA_DEFINITIONS})
     include_directories(${XENOMAI_INCLUDE_DIRS} ${BELA_INCLUDE_DIRS})
 elseif (AUDIOAPI STREQUAL webaudio)
-    add_definitions("-DSC_AUDIO_API=SC_AUDIO_API_WEBAUDIO")
-    list(APPEND scsynth_sources
-            SC_WebAudio.cpp
+    add_definitions(
+            "-DSC_AUDIO_API=SC_AUDIO_API_WEBAUDIO"
+            "-DSTATIC_PLUGINS"
     )
     list(REMOVE_ITEM scsynth_sources
             SC_ComPort.cpp
             ${CMAKE_SOURCE_DIR}/common/SC_Reply.cpp
+    )
+    # the plugins are linked statically, their sources must be included
+    set(plugin_sources_abs "")
+    foreach(plugin ${all_plugin_sources})
+        string(CONCAT plugin_abs ${CMAKE_SOURCE_DIR}/server/plugins/ ${plugin} )
+        list(APPEND plugin_sources_abs ${plugin_abs})
+    endforeach(plugin)
+
+    list(APPEND scsynth_sources
+            SC_WebAudio.cpp
+            ${plugin_sources_abs}
     )
 endif()
 
