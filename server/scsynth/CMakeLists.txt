@@ -162,6 +162,7 @@ elseif (AUDIOAPI STREQUAL webaudio)
 
     list(APPEND scsynth_sources
             SC_WebAudio.cpp
+            ${CMAKE_SOURCE_DIR}/platform/wasm/SC_WebOsc.cpp
             ${plugin_sources_abs}
     )
 endif()
@@ -249,6 +250,8 @@ elseif(AUDIOAPI STREQUAL bela)
     target_link_libraries(libscsynth ${XENOMAI_LIBRARIES} ${BELA_LIBRARIES} belaextra)
 elseif(AUDIOAPI STREQUAL coreaudio)
 	target_link_libraries(libscsynth "-framework CoreAudio")
+elseif(AUDIOAPI STREQUAL webaudio)
+    target_link_libraries(libscsynth oscpack)
 endif()
 
 
@@ -297,7 +300,8 @@ elseif(AUDIOAPI STREQUAL webaudio)
     target_compile_options(scsynth PRIVATE -pthread)
     set_target_properties(scsynth PROPERTIES LINK_FLAGS
         "-sAUDIO_WORKLET -sWASM_WORKERS -sUSE_PTHREADS -pthread \
-         -sEXPORTED_FUNCTIONS=['_malloc','_free','_scsynthSendOsc','_scsynthIsReady','_nextLine'] \
+         --bind \
+         -sEXPORTED_FUNCTIONS=['_malloc','_free','_scsynthSendOsc','_scsynthIsReady','_nextLine','_webOscBindingAnchor'] \
          -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','UTF8ToString']"
     )
 endif()
