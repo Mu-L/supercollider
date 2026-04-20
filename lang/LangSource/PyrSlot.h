@@ -26,6 +26,7 @@
 #include <cassert>
 #include <cstring>
 #include <cmath>
+#include "PyrObjectHdr.h"
 #include "PyrErrors.h"
 #include "function_attributes.h"
 #include "Hash.h"
@@ -333,22 +334,41 @@ public:
     [[nodiscard]] inline static PyrSlot make(char c) noexcept {
         return { PrivateTag(), Tags::charTag, static_cast<uint64_t>(details::bit_cast<uint8_t>(c)) };
     }
-    [[nodiscard]] inline static PyrSlot make(struct PyrObjectHdr* o) {
+
+    [[nodiscard]] inline static PyrSlot make(PyrObjectHdr* o) noexcept {
         return { PrivateTag(), Tags::objHdrTag, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(o)) };
     }
-    [[nodiscard]] inline static PyrSlot make(struct PyrSymbol* o) {
+    [[nodiscard]] inline static PyrSlot make(PyrObjectHdr& o) noexcept {
+        return { PrivateTag(), Tags::objHdrTag, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&o)) };
+    }
+
+    [[nodiscard]] inline static PyrSlot make(PyrSymbol* o) noexcept {
         return { PrivateTag(), Tags::symTag, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(o)) };
     }
-    [[nodiscard]] inline static PyrSlot make(int32_t i) {
+    [[nodiscard]] inline static PyrSlot make(PyrSymbol& o) noexcept {
+        return { PrivateTag(), Tags::symTag, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&o)) };
+    }
+
+    [[nodiscard]] inline static PyrSlot make(int32_t i) noexcept {
         return { PrivateTag(), Tags::intTag, static_cast<uint64_t>(details::bit_cast<uint32_t>(i)) };
     }
-    [[nodiscard]] inline static PyrSlot make(void* o) {
+    [[nodiscard]] inline static PyrSlot make(void* o) noexcept {
+        static_assert(sizeof(uintptr_t) <= sizeof(uint64_t)); // probably always true?
         return { PrivateTag(), Tags::ptrTag, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(o)) };
     }
+    [[nodiscard]] inline static PyrSlot make() noexcept { return {}; }
     [[nodiscard]] inline static PyrSlot make(PyrNil) noexcept { return {}; }
     [[nodiscard]] inline static PyrSlot make(bool b) noexcept {
         return { PrivateTag(), b ? Tags::trueTag : Tags::falseTag };
     }
+
+    // This is a bit hard to read (SFINAE), but basically says 'If you aren't derived from PyrObjectHdr, we will not do
+    // any casts for you'. One day, when we upgrade to c++ 20, this can be replaced by a simple concept.
+    // This also means we will not do the implicit casting to void* if you give it a pointer, this is good, because
+    // thats a very powerful overload which you should only use if you really intend to.
+    template <typename T,
+              std::enable_if_t<!std::is_base_of_v<PyrObjectHdr, typename std::remove_pointer<T>::type>, bool> = true>
+    [[nodiscard]] static PyrSlot make(T) = delete;
 
     [[nodiscard]] bool inline isDouble() const noexcept { return !isBoxed(); }
     [[nodiscard]] inline bool isChar() const noexcept { return tagChecker<Tags::charTag>(); }
@@ -394,6 +414,8 @@ public:
         assert(isBoxed());
         if (isObjectHdr())
             return reinterpret_cast<T*>(u_objectHeader.getPtr());
+        // Previously, these values have all been used to mean nullptr. This is quite confusing, but would be a large
+        // breaking change that affected the langauge, so they remain.
         assert(isNil() || (isInt() && getInt() == 0) || (isDouble() && getDouble() == 0));
         return nullptr;
     }

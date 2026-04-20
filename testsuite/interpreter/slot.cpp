@@ -1,6 +1,7 @@
 #include <boost/test/unit_test.hpp>
 #include <cstdint>
 #include <sys/types.h>
+#include <type_traits>
 
 #include "PyrSlot.h"
 #include "PyrObject.h"
@@ -32,7 +33,7 @@ BOOST_TEST_REQUIRE(i.getInt() == 32);
 {
     int a = 10;
     int* ap = &a;
-    PyrSlot s_p = PyrSlot::make(ap);
+    PyrSlot s_p = PyrSlot::make((void*)ap);
     BOOST_TEST_REQUIRE(s_p.isPtr());
     BOOST_TEST_REQUIRE(!s_p.isDouble());
     BOOST_TEST_REQUIRE(!s_p.isSymbol());
