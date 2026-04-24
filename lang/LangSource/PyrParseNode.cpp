@@ -2860,106 +2860,7 @@ void compileSwitchMsg(PyrCallNode* node) {
             nextargnode = function_node->mNext;
         }
     }
-
-    if (canInline) {
-        PyrParseNode* argnode = node->mArglist;
-
-        int flags = compilingCmdLine ? obj_immutable : obj_permanent | obj_immutable;
-        int arraySize = NEXTPOWEROFTWO(numArgs * 2);
-        PyrObject* array = newPyrArray(compileGC(), arraySize, flags, false);
-        array->size = arraySize;
-        nilSlots(array->slots, arraySize);
-
-        PyrSlot slot;
-        SetObject(&slot, array);
-
-        COMPILENODE(argnode, &dummy, false);
-        compilePushConstant(node, &slot);
-
-        Extended::Switch.emit();
-
-        argnode = argnode->mNext; // skip first arg.
-
-        PyrParseNode* nextargnode = nullptr;
-        int absoluteOffset = byteCodeLength(gCompilingByteCodes);
-        int offset = 0;
-        int lastOffset = 0;
-        for (; argnode; argnode = nextargnode) {
-            nextargnode = argnode->mNext;
-            if (nextargnode != nullptr) {
-                ByteCodes byteCodes = compileSubExpressionWithGoto((PyrPushLitNode*)nextargnode, 0x6666, true);
-
-                PyrSlot* key;
-                PyrSlot value;
-                SetInt(&value, offset);
-                PyrPushLitNode* keyargnode = (PyrPushLitNode*)argnode;
-                if (isAtomicLiteral(argnode)) {
-                    key = &keyargnode->mSlot;
-                } else {
-                    PyrBlockNode* bnode = (PyrBlockNode*)slotRawPtr(&keyargnode->mSlot);
-                    PyrDropNode* dropnode = (PyrDropNode*)bnode->mBody;
-                    PyrPushLitNode* litnode = (PyrPushLitNode*)dropnode->mExpr1;
-                    key = &litnode->mSlot;
-                }
-
-                int index = arrayAtIdentityHashInPairs(array, key);
-                PyrSlot* slot = array->slots + index;
-                slotCopy(slot, key);
-                SetInt(slot + 1, offset);
-
-                if (byteCodes) {
-                    offset += byteCodeLength(byteCodes);
-                    compileAndFreeByteCodes(byteCodes);
-                } else {
-                    PushSpecialValue.emit(OpSpecialValue::Nil_);
-                    offset += 1;
-                }
-
-                nextargnode = nextargnode->mNext;
-                if (nextargnode == nullptr) {
-                    PushSpecialValue.emit(OpSpecialValue::Nil_);
-                    lastOffset = offset;
-                    offset += 1;
-                }
-            } else {
-                ByteCodes byteCodes = compileSubExpressionWithGoto((PyrPushLitNode*)argnode, 0, true);
-
-                lastOffset = offset;
-                if (byteCodes) {
-                    offset += byteCodeLength(byteCodes);
-                    compileAndFreeByteCodes(byteCodes);
-                } else {
-                    PushSpecialValue.emit(OpSpecialValue::Nil_);
-                    lastOffset = offset;
-                    offset += 1;
-                }
-            }
-        }
-
-        Byte* bytes = gCompilingByteCodes->bytes + absoluteOffset;
-        PyrSlot* slots = array->slots;
-        {
-            int jumplen = offset - lastOffset;
-            bytes[lastOffset - 2] = (jumplen >> 8) & 255;
-            bytes[lastOffset - 1] = jumplen & 255;
-        }
-        for (int i = 0; i < arraySize; i += 2) {
-            PyrSlot* key = slots + i;
-            PyrSlot* value = key + 1;
-
-            if (IsNil(value)) {
-                SetInt(value, lastOffset);
-            } else {
-                int offsetToHere = slotRawInt(value);
-                if (offsetToHere) {
-                    int jumplen = offset - offsetToHere;
-                    bytes[offsetToHere - 2] = (jumplen >> 8) & 255;
-                    bytes[offsetToHere - 1] = jumplen & 255;
-                }
-            }
-        }
-
-    } else {
+    if (!canInline) {
         PyrParseNode* argnode = node->mArglist;
         for (; argnode; argnode = argnode->mNext) {
             COMPILENODE(argnode, &dummy, false);
@@ -2970,6 +2871,153 @@ void compileSwitchMsg(PyrCallNode* node) {
         else
             SendSpecialMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs), Operands::KwArgumentCount::fromRaw(0),
                                  Operands::Index::fromRaw(static_cast<int>(OpSpecialSelectors::Switch)));
+
+        return;
+    }
+
+    PyrParseNode* argnode = node->mArglist;
+
+    int flags = compilingCmdLine ? obj_immutable : obj_permanent | obj_immutable;
+    int arraySize = NEXTPOWEROFTWO(numArgs * 2);
+    PyrObject* array = newPyrArray(compileGC(), arraySize, flags, false);
+    array->size = arraySize;
+    nilSlots(array->slots, arraySize);
+
+    PyrSlot slot;
+    SetObject(&slot, array);
+
+    COMPILENODE(argnode, &dummy, false);
+    compilePushConstant(node, &slot);
+
+    Extended::Switch.emit();
+
+    argnode = argnode->mNext; // skip first arg.
+
+    PyrParseNode* nextargnode = nullptr;
+    int absoluteOffset = byteCodeLength(gCompilingByteCodes);
+    int offset = 0;
+    int lastOffset = 0;
+
+    // Maintain a record of the visited keys, if there are duplicates, post a compiler error.
+    using Key = std::pair<PyrSlot, PyrParseNode*>;
+    std::vector<Key> visitedKeys {};
+    visitedKeys.reserve(numArgs);
+
+    for (; argnode; argnode = nextargnode) {
+        nextargnode = argnode->mNext;
+        if (nextargnode != nullptr) {
+            ByteCodes byteCodes = compileSubExpressionWithGoto((PyrPushLitNode*)nextargnode, 0x6666, true);
+            PyrPushLitNode* keyargnode = (PyrPushLitNode*)argnode;
+
+            PyrSlot* key;
+            if (isAtomicLiteral(argnode)) {
+                key = &keyargnode->mSlot;
+                visitedKeys.push_back({ *key, keyargnode });
+            } else {
+                PyrBlockNode* bnode = (PyrBlockNode*)slotRawPtr(&keyargnode->mSlot);
+                PyrDropNode* dropnode = (PyrDropNode*)bnode->mBody;
+                PyrPushLitNode* litnode = (PyrPushLitNode*)dropnode->mExpr1;
+                key = &litnode->mSlot;
+                visitedKeys.push_back({ *key, litnode });
+            }
+
+            const int index = arrayAtIdentityHashInPairs(array, key);
+            PyrSlot* slot = array->slots + index;
+            slotCopy(slot, key);
+            SetInt(slot + 1, offset);
+
+            if (byteCodes) {
+                offset += byteCodeLength(byteCodes);
+                compileAndFreeByteCodes(byteCodes);
+            } else {
+                PushSpecialValue.emit(OpSpecialValue::Nil_);
+                offset += 1;
+            }
+
+            nextargnode = nextargnode->mNext;
+            if (nextargnode == nullptr) {
+                PushSpecialValue.emit(OpSpecialValue::Nil_);
+                lastOffset = offset;
+                offset += 1;
+            }
+        } else {
+            ByteCodes byteCodes = compileSubExpressionWithGoto((PyrPushLitNode*)argnode, 0, true);
+
+            lastOffset = offset;
+            if (byteCodes) {
+                offset += byteCodeLength(byteCodes);
+                compileAndFreeByteCodes(byteCodes);
+            } else {
+                PushSpecialValue.emit(OpSpecialValue::Nil_);
+                lastOffset = offset;
+                offset += 1;
+            }
+        }
+    }
+
+    std::sort(visitedKeys.begin(), visitedKeys.end());
+    if (const auto maybe_duplicate = std::adjacent_find(visitedKeys.begin(), visitedKeys.end());
+        maybe_duplicate != visitedKeys.end()) {
+        const auto key = maybe_duplicate->first;
+        switch (key.getTag()) {
+        case tagInt:
+            error("Duplicate key '%d' found in inlined switch statement.\n", key.getInt());
+            break;
+        case tagFloat:
+            error("Duplicate key '%f' found in inlined switch statement.\n", key.getDouble());
+            break;
+        case tagChar:
+            error("Duplicate key '%c' found in inlined switch statement.\n", key.getChar());
+            break;
+        case tagSym:
+            error("Duplicate key '%s' found in inlined switch statement.\n", key.getSymbol()->name);
+            break;
+        case tagNil:
+            error("Duplicate key 'nil' found in inlined switch statement.\n");
+            break;
+        case tagFalse:
+            error("Duplicate key 'false' found in inlined switch statement.\n");
+            break;
+        case tagTrue:
+            error("Duplicate key 'true' found in inlined switch statement.\n");
+            break;
+        // These shouldn't be possible as it must be inlined, but I've made a default anyway.
+        case tagObj:
+            [[fallthrough]];
+        case tagPtr:
+            [[fallthrough]];
+        default: {
+            assert(false); // This shouldn't happen
+            error("Duplicate key found in inlined switch statement.\n");
+            break;
+        }
+        }
+        nodePostErrorLine(maybe_duplicate->second);
+        compileErrors++;
+        return;
+    }
+
+    Byte* bytes = gCompilingByteCodes->bytes + absoluteOffset;
+    PyrSlot* slots = array->slots;
+    {
+        int jumplen = offset - lastOffset;
+        bytes[lastOffset - 2] = (jumplen >> 8) & 255;
+        bytes[lastOffset - 1] = jumplen & 255;
+    }
+    for (int i = 0; i < arraySize; i += 2) {
+        PyrSlot* key = slots + i;
+        PyrSlot* value = key + 1;
+
+        if (IsNil(value)) {
+            SetInt(value, lastOffset);
+        } else {
+            int offsetToHere = slotRawInt(value);
+            if (offsetToHere) {
+                int jumplen = offset - offsetToHere;
+                bytes[offsetToHere - 2] = (jumplen >> 8) & 255;
+                bytes[offsetToHere - 1] = jumplen & 255;
+            }
+        }
     }
 }
 
