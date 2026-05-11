@@ -39,6 +39,7 @@
 #include <string.h>
 #include <signal.h>
 #include "SpecialSelectorsOperatorsAndClasses.h"
+#include "VMGlobals.h"
 
 #include <float.h>
 #define kBigBigFloat DBL_MAX
@@ -2261,7 +2262,7 @@ HOT void Interpret(VMGlobals* g) {
 
             switch (methraw->methType) {
             case methNormal:
-                storeLoadSpAndIp([&]() { executeMethod(g, meth, numArgsPushed, 0); });
+                storeLoadSpAndIp([&]() { setupForMethod(g, meth, numArgsPushed, 0); });
                 break;
 
             case methReturnSelf:
@@ -2374,7 +2375,7 @@ HOT void Interpret(VMGlobals* g) {
 
             switch (methraw->methType) {
             case methNormal:
-                storeLoadSpAndIp([&]() { executeMethod(g, meth, numArgsPushed, numKeyArgsPushed); });
+                storeLoadSpAndIp([&]() { setupForMethod(g, meth, numArgsPushed, numKeyArgsPushed); });
                 break;
 
             case methReturnSelf:
