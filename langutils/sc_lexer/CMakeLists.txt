@@ -1,3 +1,5 @@
+include(${CMAKE_SOURCE_DIR}/cmake_modules/CompilerWarnings.cmake)
+
 add_library(sc_lexer STATIC 
 	src/codepoint_stream.cpp
 	src/codepoint.cpp
@@ -9,6 +11,7 @@ add_library(sc_lexer STATIC
 target_include_directories(sc_lexer PUBLIC include)
 
 target_link_libraries(sc_lexer PRIVATE utf8proc)
+set_target_compiler_strict_errors(sc_lexer)
 set_property(TARGET sc_lexer PROPERTY FOLDER Libs)
 
 add_subdirectory(standalone)
