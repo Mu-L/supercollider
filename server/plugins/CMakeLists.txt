@@ -1,7 +1,5 @@
 if(NOT NO_LIBSNDFILE)
 	find_package(Sndfile)
-else()
-	add_definitions("-DNO_LIBSNDFILE")
 endif()
 
 include_directories(
