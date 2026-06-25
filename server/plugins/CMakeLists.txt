@@ -78,7 +78,8 @@ if(BELA_FOUND)
     add_library(BelaUGens MODULE
         BelaUGens.cpp
     )
-    add_definitions("-DSC_BELA" ${XENOMAI_DEFINITIONS} ${BELA_DEFINITIONS})
+    target_compile_definitions(BelaUGens PRIVATE SC_BELA)
+	target_compile_options(BelaUGens PRIVATE ${XENOMAI_DEFINITIONS} ${BELA_DEFINITIONS})
     include_directories(${XENOMAI_INCLUDE_DIRS} ${BELA_INCLUDE_DIRS})
     target_link_libraries(BelaUGens PRIVATE ${XENOMAI_LIBRARIES} ${BELA_LIBRARIES})
 
