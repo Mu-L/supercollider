@@ -1,7 +1,5 @@
 if(NOT NO_LIBSNDFILE)
 	find_package(Sndfile)
-else()
-	add_definitions("-DNO_LIBSNDFILE")
 endif()
 
 include_directories(
@@ -80,7 +78,8 @@ if(BELA_FOUND)
     add_library(BelaUGens MODULE
         BelaUGens.cpp
     )
-    add_definitions("-DSC_BELA" ${XENOMAI_DEFINITIONS} ${BELA_DEFINITIONS})
+    target_compile_definitions(BelaUGens PRIVATE SC_BELA)
+	target_compile_options(BelaUGens PRIVATE ${XENOMAI_DEFINITIONS} ${BELA_DEFINITIONS})
     include_directories(${XENOMAI_INCLUDE_DIRS} ${BELA_INCLUDE_DIRS})
     target_link_libraries(BelaUGens PRIVATE ${XENOMAI_LIBRARIES} ${BELA_LIBRARIES})
 
@@ -171,15 +170,15 @@ if(NOT NO_LIBSNDFILE)
 
 	if(SNDFILE_FOUND)
 		if(SNDFILE_HAS_VORBIS)
-			target_compile_definitions(DiskIO_UGens PUBLIC SNDFILE_HAS_VORBIS)
+			target_compile_definitions(DiskIO_UGens PRIVATE SNDFILE_HAS_VORBIS)
 		endif()
 		if(SNDFILE_HAS_OPUS)
-			target_compile_definitions(DiskIO_UGens PUBLIC SNDFILE_HAS_OPUS)
+			target_compile_definitions(DiskIO_UGens PRIVATE SNDFILE_HAS_OPUS)
 		endif()
 		if(SNDFILE_HAS_MPEG)
-			target_compile_definitions(DiskIO_UGens PUBLIC SNDFILE_HAS_MPEG)
+			target_compile_definitions(DiskIO_UGens PRIVATE SNDFILE_HAS_MPEG)
 		endif()
-		target_include_directories(DiskIO_UGens SYSTEM PUBLIC ${SNDFILE_INCLUDE_DIR})
+		target_include_directories(DiskIO_UGens SYSTEM PRIVATE ${SNDFILE_INCLUDE_DIR})
 		target_link_libraries(DiskIO_UGens PRIVATE ${PTHREADS_LIBRARY} ${SNDFILE_LIBRARIES})
 		list(APPEND plugins DiskIO_UGens)
 	else()
